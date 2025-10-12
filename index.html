@@ -1,0 +1,1304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>7-Day Meal Plan Generator</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom styles for font */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400..900;1,400..900&display=swap');
+        
+        body {
+            /* Dark Theme Base Colors */
+            font-family: 'Inter', sans-serif;
+            background-color: #0f172a; /* Slate 900 */
+            color: #e2e8f0; /* Slate 200 (This is the source of the inheritance problem) */
+        }
+
+        /* Style for selected meal cells */
+        .meal-slot.filled {
+            background-color: #1e3a8a; /* Darker Blue 900 */
+            border: 2px solid #6366f1; /* Indigo 500 */
+            transition: all 0.2s;
+        }
+
+        /* Styling for tag buttons */
+        .tag-button {
+            transition: all 0.2s;
+            cursor: pointer;
+            background-color: #475569; /* Slate 600 default */
+            color: #e2e8f0; /* Slate 200 */
+        }
+
+        .tag-button.active {
+            background-color: #0d9488; /* Teal active color (remains vibrant) */
+            color: white;
+            box-shadow: 0 4px 6px -1px rgba(13, 148, 136, 0.5);
+            transform: scale(1.05);
+        }
+
+        /* --- PRINT STYLES FOR BEAUTIFUL PDF GENERATION --- */
+        @media print {
+            /* Hide the main UI controls and grid to only show the generated document */
+            #app, #recipeModal, #notificationArea {
+                display: none !important;
+            }
+            
+            /* Make the print output modal fill the page and remove shadows/borders */
+            #printOutputModal {
+                position: absolute !important;
+                top: 0 !important;
+                left: 0 !important;
+                margin: 0 !important;
+                width: 100% !important;
+                height: 100% !important;
+                overflow: visible !important;
+                background-color: white !important;
+                display: block !important; /* Ensure it is visible */
+            }
+            
+            /* Remove the modal dialog styling */
+            #printOutputDialog {
+                width: 100% !important;
+                max-width: none !important;
+                height: auto !important;
+                max-height: none !important;
+                box-shadow: none !important;
+                border-radius: 0 !important;
+                overflow: visible !important;
+                padding: 0 !important;
+                transform: none !important;
+            }
+
+            /* Hide the modal's controls (now at the top) */
+            #printOutputHeaderControls {
+                display: none !important;
+            }
+
+            /* Adjust content padding for printing */
+            #outputContentDiv {
+                padding: 0.5in; /* Adjusted for mobile view/print */
+            }
+
+            /* Force black text for print clarity */
+            * {
+                color: black !important;
+                box-shadow: none !important;
+                text-shadow: none !important;
+                background: white !important;
+            }
+            
+            /* Ensure page breaks work correctly for recipe cards */
+            .recipe-card-print {
+                page-break-inside: avoid;
+                margin-bottom: 1rem;
+            }
+
+            /* Ensure image placeholders are small for print */
+            .recipe-image {
+                max-width: 100%;
+                height: auto;
+            }
+        }
+        /* --- END PRINT STYLES --- */
+
+        /* Styling for the content div (when displayed in modal) - MUST be light for contrast/printing */
+        #outputContentDiv {
+            min-height: 400px;
+            max-height: 60vh;
+            overflow-y: scroll;
+            background-color: #ffffff; /* White background for document */
+            color: #1f2937; /* FIX: Explicitly set text color to dark gray to override body inheritance */
+            border: 1px solid #d1d5db;
+            /* Use a nicer font for the document content */
+            font-family: 'Playfair Display', serif; 
+        }
+        /* Custom class for list style on instructions */
+        .instruction-list > li {
+            counter-increment: instruction-step;
+            margin-bottom: 0.5rem;
+        }
+        .instruction-list > li::before {
+            content: counter(instruction-step) ". ";
+            font-weight: bold;
+            color: #0d9488; /* Teal color for step number */
+        }
+        .instruction-list {
+            list-style: none;
+            counter-reset: instruction-step;
+            padding-left: 0;
+        }
+    </style>
+</head>
+<body class="p-4 sm:p-8">
+
+    <div id="app" class="max-w-4xl mx-auto">
+        <header class="mb-8 p-4 bg-slate-800 rounded-xl shadow-2xl border-t-4 border-teal-500">
+            <h1 class="text-3xl font-extrabold text-teal-400 mb-2">Weekly Meal Planner</h1>
+            <p class="text-slate-400">Plan your meals for 7 days, select recipes from **27 available options**, and generate a **styled document** for a beautiful PDF export using your browser's Print function.</p>
+            
+            <!-- NEW: Plan Status Tracker -->
+            <div id="planStatus" class="mt-3 flex flex-wrap gap-4 text-sm font-semibold text-slate-300">
+                <span id="filledSlots" class="px-3 py-1 bg-blue-700 text-blue-200 rounded-full shadow-md">Meals Planned: 0 / 28</span>
+                <span id="uniqueRecipes" class="px-3 py-1 bg-teal-700 text-teal-200 rounded-full shadow-md">Unique Recipes Used: 0</span>
+            </div>
+            <!-- END NEW -->
+
+        </header>
+
+        <!-- Control Buttons -->
+        <div class="flex flex-col gap-4 mb-8">
+            <!-- New Diet Filter and Autofill Block -->
+            <div class="flex flex-col sm:flex-row gap-4">
+                <select id="dietFilter" class="w-full sm:w-1/3 p-3 border border-slate-700 rounded-xl text-base bg-slate-700 text-slate-200 focus:ring-teal-500 focus:border-teal-500 shadow-md">
+                    <!-- Options populated by JS -->
+                </select>
+                <button id="autoFillBtn" class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-6 rounded-xl shadow-lg transition duration-150 transform hover:scale-[1.01] focus:outline-none focus:ring-4 focus:ring-indigo-500/50">
+                    Auto-Fill Plan (Apply Filter)
+                </button>
+            </div>
+
+            <!-- Clear and Generate Buttons -->
+            <div class="flex flex-col sm:flex-row gap-4">
+                <button id="clearPlanBtn" class="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-6 rounded-xl shadow-lg transition duration-150 transform hover:scale-[1.01] focus:outline-none focus:ring-4 focus:ring-red-500/50">
+                    Clear Plan
+                </button>
+                <button id="generatePrintBtn" class="flex-1 bg-teal-600 hover:bg-teal-700 text-white font-bold py-3 px-6 rounded-xl shadow-lg transition duration-150 transform hover:scale-[1.01] focus:outline-none focus:ring-4 focus:ring-teal-500/50">
+                    Generate Styled Document
+                </button>
+            </div>
+        </div>
+
+        <!-- Meal Plan Grid -->
+        <div id="mealPlanGridContainer" class="bg-slate-800 p-2 sm:p-6 rounded-xl shadow-2xl overflow-x-auto">
+            <table class="min-w-full divide-y divide-slate-700">
+                <thead class="bg-slate-700">
+                    <tr>
+                        <th class="px-2 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Day</th>
+                        <th class="px-2 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Breakfast</th>
+                        <th class="px-2 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Lunch</th>
+                        <th class="px-2 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Dinner</th>
+                        <th class="px-2 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">Snack</th>
+                    </tr>
+                </thead>
+                <tbody id="mealPlanBody" class="bg-slate-800 divide-y divide-slate-700">
+                    <!-- Grid content will be rendered here by JavaScript -->
+                </tbody>
+            </table>
+        </div>
+
+    </div>
+
+    <!-- Recipe Selection Modal -->
+    <div id="recipeModal" class="fixed inset-0 bg-black bg-opacity-80 hidden items-center justify-center p-4 z-50 transition-opacity duration-300" onclick="if(event.target.id === 'recipeModal') closeModal()">
+        <div class="bg-slate-800 w-full max-w-lg max-h-[90vh] rounded-xl shadow-2xl overflow-hidden transform scale-100 transition-transform duration-300">
+            <div class="p-6 overflow-y-auto">
+                <h2 class="text-2xl font-bold text-teal-400 mb-4">Select Recipe for <span id="modalTitleSlot" class="text-indigo-400"></span></h2>
+                
+                <!-- Filters: Category Dropdown & Tag Buttons -->
+                <div class="mb-4 space-y-3 p-3 bg-slate-700 rounded-lg">
+                    <!-- Category Filter -->
+                    <select id="categoryFilter" class="w-full p-3 border border-slate-600 rounded-lg text-base bg-slate-600 text-slate-200 focus:ring-teal-500 focus:border-teal-500" onchange="filterRecipes()">
+                        <option value="">All Categories</option>
+                        <!-- Options filled by JS -->
+                    </select>
+                    
+                    <p class="text-sm font-semibold text-slate-300 mt-3">Filter by Tags (Select multiple):</p>
+                    <!-- Tag Buttons Container -->
+                    <div id="tagButtonContainer" class="flex flex-wrap gap-2 pt-1">
+                        <!-- Curated Tag buttons filled by JS -->
+                    </div>
+                </div>
+
+                <!-- Recipe List -->
+                <div id="recipeList" class="space-y-3 max-h-80 overflow-y-auto pr-2">
+                    <!-- Recipes will be loaded here -->
+                </div>
+            </div>
+            
+            <!-- Modal Footer -->
+            <div class="p-4 bg-slate-700 flex justify-end">
+                <button onclick="closeModal()" class="bg-slate-600 hover:bg-slate-500 text-slate-200 font-bold py-2 px-4 rounded-lg transition duration-150">
+                    Cancel
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Printable HTML Output Modal -->
+    <div id="printOutputModal" class="fixed inset-0 bg-black bg-opacity-80 hidden items-center justify-center p-4 z-50 transition-opacity duration-300" onclick="if(event.target.id === 'printOutputModal') closePrintOutputModal()">
+        <div id="printOutputDialog" class="bg-slate-800 w-full max-w-4xl max-h-[90vh] rounded-xl shadow-2xl overflow-hidden transform scale-100 transition-transform duration-300">
+            
+            <div class="p-6 bg-slate-700">
+                <h2 class="text-2xl font-bold text-teal-400 mb-4">Review Document for Printing</h2>
+                
+                <!-- START: Moved Controls (New Header Section) -->
+                <div id="printOutputHeaderControls" class="flex flex-wrap justify-end gap-3 mb-4">
+                    <button onclick="triggerPrintWithDelay()" class="bg-teal-600 hover:bg-teal-700 text-white font-bold py-2 px-4 rounded-lg transition duration-150 shadow-lg">
+                        Print Document
+                    </button>
+                    <button onclick="closePrintOutputModal()" class="bg-slate-600 hover:bg-slate-500 text-slate-200 font-bold py-2 px-4 rounded-lg transition duration-150 shadow-lg">
+                        Close
+                    </button>
+                </div>
+                <!-- END: Moved Controls -->
+
+                <!-- Content Div for Styled HTML - Moved outside the control section but inside the dialog -->
+                <!-- Removed the top padding here since the header has it -->
+            </div> 
+
+            <div class="p-6 pt-0 max-h-[70vh] overflow-y-auto">
+                <div id="outputContentDiv" class="w-full p-6 rounded-lg text-sm border-2 border-slate-700">
+                    <!-- Styled content will be generated here -->
+                </div>
+            </div>
+            
+            <!-- Modal Footer (REMOVED - functionality moved to printOutputHeaderControls) -->
+        </div>
+    </div>
+
+    <!-- Notification Area (for errors/warnings) -->
+    <div id="notificationArea" class="hidden fixed inset-0 flex items-center justify-center z-50 p-4">
+        <!-- Content generated dynamically -->
+    </div>
+
+    <script>
+        // Use an empty string for the API key as it will be provided by the environment
+        const apiKey = ""; 
+
+        // --- CURATED TAGS LIST ---
+        // This list defines the buttons shown to the user. Recipes must have these exact strings in their tags array.
+        const CURATED_TAGS = [
+            'Gluten Free',
+            'Dairy Free',
+            'Low Carb',
+            'Meal Prep/Freezer Friendly',
+            'High Protein',
+            'Vegetarian',
+            'Quick',
+            'Contains Nuts'
+        ];
+
+        // --- MAJOR DIET FILTER MAPPING ---
+        // Map display names to the exact tag needed for filtering
+        const MAJOR_DIETS = {
+            '': 'All Diets',
+            'Low Carb': 'Low Carb',
+            'Vegetarian': 'Vegetarian',
+            'High Protein': 'High Protein',
+            'Gluten Free': 'Gluten Free',
+            'Dairy Free': 'Dairy Free',
+        };
+
+        // --- Ingredient Categorization Mapping (New Logic) ---
+        // Maps ingredients to the fixed shopping list categories for printing.
+        const FINAL_CATEGORIES = {
+            'Fruits': ['apple', 'peach', 'blueberry', 'banana', 'kiwi', 'lime', 'lemon', 'berries', 'mango', 'applesauce'],
+            'Vegetables': ['kale', 'sweetcorn', 'onion', 'broccoli', 'spinach', 'carrot', 'tomato', 'avocado', 'eggplant', 'pepper', 'chive', 'cilantro', 'ginger', 'vegetables', 'peas', 'beetroot'],
+            'Protein': ['chicken', 'beef', 'turkey', 'tuna', 'prawn', 'egg', 'greek yogurt', 'protein powder', 'chorizo'],
+            'Dairy': ['milk', 'cheese', 'ricotta', 'cream cheese', 'cottage cheese', 'butter'],
+            'Seeds & Nuts': ['oats', 'chia seeds', 'linseeds', 'pecans', 'almond', 'cashew', 'peanut butter', 'almond butter', 'hemp seeds', 'nuts', 'tahini'],
+            'Baking & Grains': ['flour', 'polenta', 'quinoa', 'pasta', 'tortilla', 'pancake mix', 'breadcrumbs', 'baking powder', 'baking soda', 'rice'],
+            'Cans & Jarred': ['chickpea', 'coconut milk', 'vegetable broth', 'canned tuna', 'jam', 'chocolate'],
+            'Spices': ['cinnamon', 'spices', 'curry powder', 'paprika', 'vanilla extract', 'matcha powder'],
+            'Condiments': ['honey', 'bbq sauce', 'soy sauce', 'teriyaki sauce', 'vinaigrette', 'mayo', 'taco seasoning', 'salsa', 'sugar'],
+            'Misc': [] // Everything else falls into Misc
+        };
+        const SHOPPING_CATEGORIES_ORDER = Object.keys(FINAL_CATEGORIES); // Use the order of the keys defined above
+
+
+        // --- Mock Data Setup (now 27 recipes total) ---
+        // Tags are standardized to the CURATED_TAGS list where possible.
+        const RECIPES = [
+            { 
+                id: 'r1', name: 'Chocolate Baked Oats', category: 'Breakfast', 
+                ingredients: [{ name: 'Rolled Oats', quantity: '1 cup' }, { name: 'Cocoa Powder', quantity: '2 tbsp' }, { name: 'Milk', quantity: '1/2 cup' }, { name: 'Sweetener', quantity: 'to taste' }], 
+                instructions: '1. Preheat oven to 180°C. 2. Combine all ingredients in a bowl and mix well. 3. Pour into an oven-safe dish. 4. Bake for 20-25 minutes until set. Serve warm.', 
+                tags: ['Quick', 'High Protein', 'Vegetarian'], 
+                image: 'https://placehold.co/300x200/5C3D2E/FFFFFF?text=Chocolate+Baked+Oats',
+                nutrition: { Prep: '5 mins', Cook: '20 mins', Kcal: 350, Fats: 10, Carbs: 55, Protein: 12, Fibre: 8 },
+                storage: 'Store in an airtight container for up to 3 days.'
+            },
+            { 
+                id: 'r2', name: 'Peach, Honey & Cinnamon Overnight Oats', category: 'Breakfast', 
+                ingredients: [{ name: 'Rolled Oats', quantity: '1 cup' }, { name: 'Milk', quantity: '1/2 cup' }, { name: 'Peaches, sliced', quantity: '1' }, { name: 'Honey', quantity: '1 tsp' }, { name: 'Cinnamon', quantity: '1/2 tsp' }], 
+                instructions: '1. Combine oats, milk, honey, and cinnamon in a jar. 2. Layer with sliced peaches. 3. Refrigerate overnight. Serve cold.', 
+                tags: ['Quick', 'Meal Prep/Freezer Friendly', 'Vegetarian'], 
+                image: 'https://placehold.co/300x200/FFC99A/5C3D2E?text=Overnight+Oats',
+                nutrition: { Prep: '10 mins', Cook: '0 mins', Kcal: 290, Fats: 5, Carbs: 48, Protein: 10, Fibre: 6 },
+                storage: 'Store in the refrigerator for up to 2 days.'
+            },
+            { 
+                id: 'r3', name: 'Cheeseburger Omelet', category: 'Breakfast', 
+                ingredients: [{ name: 'Eggs', quantity: '3' }, { name: 'Ground Beef', quantity: '100g' }, { name: 'Cheese, shredded', quantity: '30g' }, { name: 'Onion, diced', quantity: '1/4' }], 
+                instructions: '1. Cook ground beef and onions. Drain fat. 2. Whisk eggs. Pour into a non-stick pan. 3. When edges set, add beef and cheese to one side. 4. Fold the omelet and cook until cheese melts.', 
+                tags: ['High Protein', 'Low Carb', 'Quick', 'Gluten Free'], 
+                image: 'https://placehold.co/300x200/C20A0A/FFFFFF?text=Cheeseburger+Omelet',
+                nutrition: { Prep: '5 mins', Cook: '10 mins', Kcal: 450, Fats: 30, Carbs: 5, Protein: 40, Fibre: 1 },
+                storage: 'Best consumed immediately.'
+            },
+            { 
+                id: 'r4', name: 'Mexican Sweetcorn Frittata With Beef Bites', category: 'Breakfast', 
+                ingredients: [{ name: 'Eggs', quantity: '4' }, { name: 'Sweetcorn, canned', quantity: '1/2 cup' }, { name: 'Ground Beef (cooked)', quantity: '100g' }, { name: 'Feta Cheese', quantity: '20g' }, { name: 'Spices', quantity: '1 tsp' }], 
+                instructions: '1. Mix all ingredients except feta. 2. Pour into a small oven-safe pan. 3. Sprinkle with feta. 4. Bake at 180°C for 15-20 minutes until set.', 
+                tags: ['High Protein', 'Quick', 'Gluten Free'], 
+                image: 'https://placehold.co/300x200/FFD700/6A0DAD?text=Frittata',
+                nutrition: { Prep: '10 mins', Cook: '20 mins', Kcal: 400, Fats: 25, Carbs: 20, Protein: 35, Fibre: 3 },
+                storage: 'Store in the refrigerator for up to 3 days.'
+            }, 
+            { 
+                id: 'r5', name: 'Spicy Chicken & Chickpeas', category: 'Lunch', 
+                ingredients: [{ name: 'Chicken Breast', quantity: '150g' }, { name: 'Chickpeas, canned', quantity: '1/2 cup' }, { name: 'Spices (Chili/Cumin)', quantity: '1 tbsp' }, { name: 'Olive Oil', quantity: '1 tsp' }], 
+                tags: ['Meal Prep/Freezer Friendly', 'Gluten Free', 'High Protein', 'Dairy Free'], 
+                instructions: '1. Dice chicken and toss with spices. 2. Cook chicken in a pan until done. 3. Add chickpeas and cook until heated through. Serve with rice or salad.', 
+                image: 'https://placehold.co/300x200/E32636/FFFFFF?text=Spicy+Chicken',
+                nutrition: { Prep: '5 mins', Cook: '15 mins', Kcal: 380, Fats: 10, Carbs: 35, Protein: 38, Fibre: 7 },
+                storage: 'Store in the refrigerator for up to 4 days.'
+            },
+            { 
+                id: 'r6', name: 'Kale, Quinoa & Blueberry Salad', category: 'Lunch', 
+                ingredients: [{ name: 'Kale', quantity: '1 bunch' }, { name: 'Quinoa, cooked', quantity: '1/2 cup' }, { name: 'Blueberries', quantity: '1/2 cup' }, { name: 'Vinaigrette Dressing', quantity: '2 tbsp' }, { name: 'Toasted Pecans', quantity: '1/4 cup' }], 
+                instructions: '1. Massage kale with a little dressing to soften. 2. Combine kale, quinoa, blueberries, and pecans. 3. Toss with remaining dressing just before serving.', 
+                tags: ['Vegetarian', 'Quick', 'Gluten Free', 'Dairy Free', 'Contains Nuts'], 
+                image: 'https://placehold.co/300x200/4CAF50/FFFFFF?text=Quinoa+Salad',
+                nutrition: { Prep: '10 mins', Cook: '0 mins', Kcal: 320, Fats: 15, Carbs: 35, Protein: 8, Fibre: 6 },
+                storage: 'Store dry ingredients separate from dressing; lasts 3 days.'
+            },
+            { 
+                id: 'r7', name: 'High Protein Polenta Base BBQ Pizza', category: 'Dinner', 
+                ingredients: [{ name: 'Polenta', quantity: '1 cup' }, { name: 'BBQ Sauce', quantity: '2 tbsp' }, { name: 'Shredded Chicken', quantity: '50g' }, { name: 'Mozzarella', quantity: '1/2 cup' }, { name: 'Red Onion', quantity: '1/4' }], 
+                instructions: '1. Prepare polenta and spread onto a baking sheet to cool. 2. Top with BBQ sauce, chicken, mozzarella, and onion. 3. Bake at 200°C until cheese is bubbly and crust is firm.', 
+                tags: ['High Protein'], 
+                image: 'https://placehold.co/300x200/F44336/FFFFFF?text=Polenta+Pizza',
+                nutrition: { Prep: '15 mins', Cook: '15 mins', Kcal: 480, Fats: 18, Carbs: 50, Protein: 30, Fibre: 5 },
+                storage: 'Refrigerate leftovers for up to 2 days.'
+            },
+            { 
+                id: 'r8', name: 'Thai Fish Parcels', category: 'Dinner', 
+                ingredients: [{ name: 'White Fish Fillets', quantity: '2' }, { name: 'Coconut Milk', quantity: '1/4 cup' }, { name: 'Ginger, grated', quantity: '1 tsp' }, { name: 'Lime', quantity: '1/2' }, { name: 'Cilantro', quantity: '1 tbsp' }], 
+                instructions: '1. Place fish on foil. Top with coconut milk, ginger, lime slices, and cilantro. 2. Seal the foil into a parcel. 3. Bake at 180°C or steam for 15 minutes until fish is cooked.', 
+                tags: ['Low Carb', 'Quick', 'Gluten Free', 'Dairy Free'], 
+                image: 'https://placehold.co/300x200/00BCD4/FFFFFF?text=Thai+Fish',
+                nutrition: { Prep: '5 mins', Cook: '15 mins', Kcal: 310, Fats: 18, Carbs: 5, Protein: 35, Fibre: 1 },
+                storage: 'Best consumed immediately.'
+            },
+            { 
+                id: 'r9', name: 'Teriyaki Turkey Stir-Fry', category: 'Dinner', 
+                ingredients: [{ name: 'Turkey Mince', quantity: '200g' }, { name: 'Broccoli florets', quantity: '1 cup' }, { name: 'Soy Sauce', quantity: '2 tbsp' }, { name: 'Cooked Rice', quantity: '1 cup' }, { name: 'Teriyaki Sauce', quantity: '3 tbsp' }], 
+                instructions: '1. Brown turkey mince in a wok. 2. Add broccoli and stir-fry until tender-crisp. 3. Stir in teriyaki and soy sauce. 4. Serve over cooked rice.', 
+                tags: ['Quick', 'High Protein', 'Dairy Free'], 
+                image: 'https://placehold.co/300x200/FF9800/FFFFFF?text=Turkey+StirFry',
+                nutrition: { Prep: '10 mins', Cook: '10 mins', Kcal: 420, Fats: 10, Carbs: 45, Protein: 40, Fibre: 5 },
+                storage: 'Store in airtight containers for up to 3 days.'
+            },
+            { 
+                id: 'r10', name: 'High Protein Tuna Bake', category: 'Dinner', 
+                ingredients: [{ name: 'Canned Tuna (in water)', quantity: '180g' }, { name: 'Cottage Cheese', quantity: '1/2 cup' }, { name: 'Wholemeal Pasta (cooked)', quantity: '1 cup' }, { name: 'Frozen Peas', quantity: '1/4 cup' }, { name: 'Breadcrumbs', quantity: '1 tbsp' }], 
+                instructions: '1. Mix tuna, cottage cheese, cooked pasta, and peas. 2. Place in an oven-safe dish. 3. Top with breadcrumbs. 4. Bake at 180°C for 15 minutes until golden brown.', 
+                tags: ['High Protein', 'Meal Prep/Freezer Friendly'], 
+                image: 'https://placehold.co/300x200/9C27B0/FFFFFF?text=Tuna+Bake',
+                nutrition: { Prep: '10 mins', Cook: '15 mins', Kcal: 450, Fats: 8, Carbs: 50, Protein: 45, Fibre: 6 },
+                storage: 'Perfect for batch cooking; refrigerate up to 4 days.'
+            },
+            { 
+                id: 'r11', name: 'Keto Eggplant Lasagna', category: 'Dinner', 
+                ingredients: [{ name: 'Eggplant (thinly sliced)', quantity: '1 large' }, { name: 'Ground Beef', quantity: '250g' }, { name: 'Mozzarella Cheese (shredded)', quantity: '1 cup' }, { name: 'Tomato Sauce (low sugar)', quantity: '1/2 cup' }, { name: 'Ricotta Cheese', quantity: '1/2 cup' }], 
+                instructions: '1. Brown ground beef and mix with tomato sauce. 2. Layer eggplant, meat sauce, ricotta, and mozzarella in a baking dish. 3. Repeat layers. 4. Bake at 190°C for 30-40 minutes.', 
+                tags: ['Low Carb', 'Meal Prep/Freezer Friendly', 'Gluten Free', 'High Protein'], 
+                image: 'https://placehold.co/300x200/4E342E/FFFFFF?text=Eggplant+Lasagna',
+                nutrition: { Prep: '20 mins', Cook: '40 mins', Kcal: 550, Fats: 35, Carbs: 20, Protein: 40, Fibre: 10 },
+                storage: 'Refrigerate for up to 4 days.'
+            }, 
+            { 
+                id: 'r12', name: '5-Minute Tomato Salsa', category: 'Snack', 
+                ingredients: [{ name: 'Tomatoes, diced', quantity: '2 large' }, { name: 'Red Onion, diced', quantity: '1/4' }, { name: 'Cilantro, chopped', quantity: '1/4 cup' }, { name: 'Lime Juice', quantity: '1 tbsp' }], 
+                instructions: '1. Combine all ingredients in a bowl. 2. Season with salt and pepper to taste. Serve immediately.', 
+                tags: ['Quick', 'Vegetarian', 'Gluten Free', 'Dairy Free'], 
+                image: 'https://placehold.co/300x200/D32F2F/FFFFFF?text=Tomato+Salsa',
+                nutrition: { Prep: '5 mins', Cook: '0 mins', Kcal: 50, Fats: 0, Carbs: 10, Protein: 2, Fibre: 2 },
+                storage: 'Store in the refrigerator for up to 3 days.'
+            }, 
+            { 
+                id: 'r13', name: 'Vanilla & Cinnamon Protein Balls', category: 'Snack', 
+                ingredients: [{ name: 'Rolled Oats', quantity: '¾ cup (60g)' }, { name: 'Almond Butter, smooth', quantity: '½ cup (125g)' }, { name: 'Almonds', quantity: '½ cup (75g)' }, { name: 'Honey', quantity: '4 tbsp.' }, { name: 'Vanilla Whey Protein Powder', quantity: '1 scoop (25g)' }, { name: 'Ground Cinnamon', quantity: '1 tsp' }, { name: 'Vanilla Extract', quantity: '1 tsp' }, { name: 'Water', quantity: '2 tbsp' }], 
+                instructions: '1. Place the oats, almond butter, almonds, honey, protein powder, cinnamon and vanilla extract into a food processor and process until a dough like consistency forms. Add the 2 tablespoons of water and continue to blitz the mixture until the balls start to stick together. 2. Roll the mixture into 16 balls (about 1 tablespoon per ball). 3. Mix 2 tablespoons of vanilla protein powder and 1 teaspoon ground cinnamon in a large zip-lock bag. Place the protein balls inside the bag and gently toss in the mixture until the balls are coated.', 
+                tags: ['High Protein', 'Contains Nuts', 'Meal Prep/Freezer Friendly', 'Vegetarian'], 
+                image: 'https://placehold.co/300x200/FFCC00/333333?text=Protein+Balls',
+                nutrition: { Prep: '10 mins', Cook: '0 mins', Kcal: 134, Fats: 8, Carbs: 12, Protein: 5, Fibre: 3 },
+                storage: 'Store in the refrigerator for up to 5 days.'
+            },
+            { 
+                id: 'r14', name: 'Carrot Cake Muffins With Cashew Icing', category: 'Snack', 
+                ingredients: [{ name: 'Carrots, grated', quantity: '1 cup' }, { name: 'Flour', quantity: '1 cup' }, { name: 'Eggs', quantity: '2' }, { name: 'Cashews', quantity: '1/4 cup' }, { name: 'Cream Cheese', quantity: '2 tbsp' }, { name: 'Baking Powder', quantity: '1 tsp' }], 
+                instructions: '1. Combine wet and dry ingredients for muffins. Stir in grated carrots. 2. Fill muffin cups and bake at 180°C for 20 minutes. 3. Blend cashews and cream cheese for icing. Top muffins when cool.', 
+                tags: ['Contains Nuts', 'Vegetarian'], 
+                image: 'https://placehold.co/300x200/F4A460/FFFFFF?text=Carrot+Muffins',
+                nutrition: { Prep: '15 mins', Cook: '20 mins', Kcal: 250, Fats: 15, Carbs: 25, Protein: 6, Fibre: 3 },
+                storage: 'Store in an airtight container for up to 3 days.'
+            },
+            { 
+                id: 'r15', name: 'Blackberry & Vanilla Linseed Pudding', category: 'Snack', 
+                ingredients: [{ name: 'Linseeds (Flaxseeds)', quantity: '2 tbsp' }, { name: 'Blackberries, frozen', quantity: '1 cup' }, { name: 'Vanilla Extract', quantity: '1 tsp' }, { name: 'Milk', quantity: '1/2 cup' }, { name: 'Sweetener', quantity: 'to taste' }], 
+                instructions: '1. Blend blackberries, milk, and vanilla extract until smooth. 2. Stir in linseeds and sweetener. 3. Pour into a glass and refrigerate overnight until thickened. 4. Serve with fresh berries.', 
+                tags: ['Quick', 'Gluten Free', 'Vegetarian', 'Dairy Free'], 
+                image: 'https://placehold.co/300x200/7D26CD/FFFFFF?text=Linseed+Pudding',
+                nutrition: { Prep: '5 mins', Cook: '0 mins', Kcal: 200, Fats: 10, Carbs: 25, Protein: 5, Fibre: 8 },
+                storage: 'Store in the refrigerator for up to 2 days.'
+            },
+            { 
+                id: 'r16', name: 'Matcha Overnight Oats', category: 'Breakfast', 
+                ingredients: [
+                    { name: 'Matcha Powder', quantity: '1/2 tsp' }, { name: 'Hot Water', quantity: '2 tbsp' }, 
+                    { name: 'Chia Seeds', quantity: '1 tbsp' }, { name: 'Rolled Oats', quantity: '1/2 cup (50g)' }, 
+                    { name: 'Almond Milk', quantity: '1/2 cup (120ml)' }, { name: 'Greek Yogurt', quantity: '1/2 cup (125g)' }, 
+                    { name: 'Honey', quantity: '1 tbsp' }, { name: 'Kiwi, sliced', quantity: '1' }, 
+                    { name: 'Desiccated Coconut', quantity: '1 tsp' }
+                ], 
+                instructions: '1. In a small bowl, combine matcha and 2 tbsp. of boiled water, whisk until smooth. 2. In a jar or container, combine the oats and chia seeds. Add the milk, yogurt, honey, and matcha paste. Stir well and refrigerate overnight. 3. Top with sliced kiwi and coconut before serving.', 
+                tags: ['Vegetarian', 'Quick', 'High Protein', 'Contains Nuts'], 
+                image: 'https://placehold.co/300x200/99B898/FFFFFF?text=Matcha+Oats',
+                nutrition: { Prep: '10 mins', Cook: '0 mins', Kcal: 320, Fats: 11, Carbs: 38, Protein: 21, Fibre: 5 },
+                storage: 'Store in the refrigerator for up to 2 days.'
+            },
+            { 
+                id: 'r17', name: 'Apple Nachos', category: 'Snack', 
+                ingredients: [
+                    { name: 'Apples, large', quantity: '2' }, { name: 'Lemon/Lime Juice', quantity: '1 tsp' }, 
+                    { name: 'Sugar-Free Chocolate Chips', quantity: '1/2 cup (85g)' }, { name: 'Peanut Butter', quantity: '3 tbsp' }, 
+                    { name: 'Coconut Oil', quantity: '1 1/2 tsp' }, { name: 'Hemp Seeds', quantity: '1/2 tbsp' }
+                ], 
+                instructions: '1. Slice apples thinly and toss with lime juice. Spread on a plate. 2. Melt chocolate chips and coconut oil (1 tsp) over low heat. 3. Warm peanut butter until runny (add 1/2 tsp coconut oil if needed). 4. Drizzle both sauces over the apples and top with hemp seeds.', 
+                tags: ['Vegetarian', 'Quick', 'Contains Nuts', 'Gluten Free', 'Dairy Free'], 
+                image: 'https://placehold.co/300x200/F58549/FFFFFF?text=Apple+Nachos',
+                nutrition: { Prep: '5 mins', Cook: '5 mins', Kcal: 280, Fats: 16, Carbs: 37, Protein: 6, Fibre: 6 },
+                storage: 'Best consumed immediately.'
+            },
+            { 
+                id: 'r18', name: 'Creamy Prawn Pasta', category: 'Dinner', 
+                ingredients: [
+                    { name: 'Prawns, peeled', quantity: '150g' }, { name: 'Wholemeal Pasta', quantity: '1 cup (cooked)' }, 
+                    { name: 'Low-Fat Cream Cheese', quantity: '2 tbsp' }, { name: 'Garlic, minced', quantity: '1 clove' }, 
+                    { name: 'Lemon Zest', quantity: '1 tsp' }
+                ], 
+                instructions: '1. Cook pasta according to instructions. 2. In a pan, sauté garlic, then add prawns and cook until pink. 3. Stir in cream cheese and a splash of pasta water until a creamy sauce forms. 4. Toss with pasta and lemon zest. Serve immediately.', 
+                tags: ['Quick', 'High Protein'], 
+                image: 'https://placehold.co/300x200/29B6F6/FFFFFF?text=Prawn+Pasta',
+                nutrition: { Prep: '10 mins', Cook: '15 mins', Kcal: 520, Fats: 12, Carbs: 65, Protein: 35, Fibre: 5 },
+                storage: 'Best consumed fresh.'
+            },
+            { 
+                id: 'r19', name: 'Lentil & Sweet Potato Curry', category: 'Dinner', 
+                ingredients: [
+                    { name: 'Red Lentils', quantity: '1/2 cup' }, { name: 'Sweet Potato, diced', quantity: '1 large' }, 
+                    { name: 'Coconut Milk, light', quantity: '1/2 can' }, { name: 'Curry Powder', quantity: '2 tbsp' }, 
+                    { name: 'Vegetable Broth', quantity: '1 cup' }
+                ], 
+                instructions: '1. Sauté sweet potato and curry powder in a pot for 2 mins. 2. Add lentils, broth, and coconut milk. 3. Bring to a boil, then simmer for 25-30 mins until lentils are soft and curry has thickened. Serve with fresh cilantro.', 
+                tags: ['Vegetarian', 'Meal Prep/Freezer Friendly', 'Gluten Free', 'Dairy Free'], 
+                image: 'https://placehold.co/300x200/FF5722/FFFFFF?text=Lentil+Curry',
+                nutrition: { Prep: '20 mins', Cook: '30 mins', Kcal: 410, Fats: 10, Carbs: 60, Protein: 18, Fibre: 15 },
+                storage: 'Stores well in the refrigerator for up to 5 days.'
+            },
+            { 
+                id: 'r20', name: 'Energizing Green Smoothie', category: 'Breakfast', 
+                ingredients: [
+                    { name: 'Spinach', quantity: '1 cup' }, { name: 'Frozen Mango Chunks', quantity: '1/2 cup' }, 
+                    { name: 'Banana', quantity: '1' }, { name: 'Protein Powder', quantity: '1 scoop' }, 
+                    { name: 'Water or Milk', quantity: '1 cup' }
+                ], 
+                instructions: '1. Combine all ingredients in a high-powered blender. 2. Blend until completely smooth and creamy. 3. Adjust liquid for desired consistency and serve immediately.', 
+                tags: ['Quick', 'High Protein', 'Dairy Free', 'Vegetarian'], 
+                image: 'https://placehold.co/300x200/8BC34A/FFFFFF?text=Green+Smoothie',
+                nutrition: { Prep: '5 mins', Cook: '0 mins', Kcal: 180, Fats: 2, Carbs: 30, Protein: 15, Fibre: 6 },
+                storage: 'Best consumed immediately.'
+            },
+            { 
+                id: 'r21', name: 'Chicken & Chorizo Skewers', category: 'Dinner', 
+                ingredients: [
+                    { name: 'Chicken Breast, cubed', quantity: '150g' }, { name: 'Chorizo, sliced', quantity: '50g' }, 
+                    { name: 'Bell Peppers, chopped', quantity: '1 cup' }, { name: 'Onion, quartered', quantity: '1/2' }, 
+                    { name: 'Smoked Paprika', quantity: '1 tsp' }
+                ], 
+                instructions: '1. Thread chicken, chorizo, peppers, and onion onto skewers. Sprinkle with paprika. 2. Grill, BBQ, or bake at 200°C for 15-20 minutes, turning halfway, until chicken is cooked through. Serve with salad.', 
+                tags: ['High Protein', 'Quick', 'Gluten Free', 'Dairy Free', 'Low Carb'], 
+                image: 'https://placehold.co/300x200/F44336/FFFFFF?text=Skewers',
+                nutrition: { Prep: '10 mins', Cook: '15 mins', Kcal: 450, Fats: 25, Carbs: 10, Protein: 50, Fibre: 4 },
+                storage: 'Refrigerate cooked skewers for up to 3 days.'
+            },
+            { 
+                id: 'r22', name: 'Peanut Butter & Jelly Wrap', category: 'Lunch', 
+                ingredients: [
+                    { name: 'Wholemeal Tortilla', quantity: '1' }, { name: 'Peanut Butter', quantity: '2 tbsp' }, 
+                    { name: 'Sugar-Free Jam', quantity: '1 tbsp' }, { name: 'Sliced Banana', quantity: '1/2' }
+                ], 
+                instructions: '1. Spread peanut butter evenly over the tortilla. 2. Spread jam over the peanut butter. 3. Lay banana slices down the middle. 4. Roll up tightly and slice in half diagonally.', 
+                tags: ['Quick', 'Contains Nuts', 'Vegetarian'], 
+                image: 'https://placehold.co/300x200/D4A017/FFFFFF?text=PB%26J+Wrap',
+                nutrition: { Prep: '2 mins', Cook: '0 mins', Kcal: 300, Fats: 15, Carbs: 30, Protein: 10, Fibre: 5 },
+                storage: 'Best eaten immediately, but can be pre-made for short travel.'
+            },
+            { 
+                id: 'r23', name: 'Chicken Stuffed Avocado', category: 'Lunch', 
+                ingredients: [{ name: 'Avocado', quantity: '1/2' }, { name: 'Shredded Chicken (cooked)', quantity: '100g' }, { name: 'Mayo (low-fat)', quantity: '1 tbsp' }, { name: 'Chives, chopped', quantity: '1 tsp' }], 
+                instructions: '1. Mix shredded chicken, mayo, and chives. 2. Place mixture into the avocado half. 3. Season with salt and pepper.', 
+                tags: ['High Protein', 'Low Carb', 'Quick', 'Gluten Free', 'Dairy Free'], 
+                image: 'https://placehold.co/300x200/795548/FFFFFF?text=Avocado+Chicken',
+                nutrition: { Prep: '5 mins', Cook: '0 mins', Kcal: 350, Fats: 25, Carbs: 5, Protein: 35, Fibre: 5 },
+                storage: 'Best consumed immediately.'
+            },
+            { 
+                id: 'r24', name: 'Chocolate Chip Protein Pancakes', category: 'Breakfast', 
+                ingredients: [{ name: 'Protein Pancake Mix', quantity: '1/2 cup' }, { name: 'Egg', quantity: '1' }, { name: 'Water/Milk', quantity: '1/4 cup' }, { name: 'Sugar-Free Chocolate Chips', quantity: '1 tbsp' }], 
+                instructions: '1. Mix pancake mix, egg, and liquid until smooth. Stir in chocolate chips. 2. Cook on a non-stick pan until golden brown on both sides. 3. Serve with low-sugar syrup.', 
+                tags: ['High Protein', 'Quick', 'Vegetarian'], 
+                image: 'https://placehold.co/300x200/FFD740/333333?text=Protein+Pancakes',
+                nutrition: { Prep: '5 mins', Cook: '10 mins', Kcal: 320, Fats: 10, Carbs: 30, Protein: 30, Fibre: 4 },
+                storage: 'Store for up to 2 days; reheat in microwave.'
+            },
+            
+            <!-- NEW RECIPES FROM PDF -->
+            {
+                id: 'r25', name: 'Tex-Mex Breakfast Bowl', category: 'Breakfast',
+                ingredients: [
+                    { name: 'Dry Quinoa', quantity: '3.2 oz. (90g)' },
+                    { name: 'Lean Ground Turkey', quantity: '1 lb. (450g)' },
+                    { name: 'Taco Seasoning', quantity: '1 oz. (30g)' },
+                    { name: 'Eggs', quantity: '4' },
+                    { name: 'Avocado, mashed', quantity: '1' },
+                    { name: 'Salsa', quantity: '4 tbsp.' },
+                    { name: 'Green Onion, sliced', quantity: '1' },
+                    { name: 'Cilantro, chopped', quantity: '1 tbsp.' },
+                    { name: 'Lime Wedges', quantity: 'to serve' }
+                ],
+                instructions: '1. Cook the quinoa according to package instructions. 2. Heat 1 tsp. olive oil in a non-stick skillet and add the ground turkey and taco seasoning. Sauté until cooked through. 3. In the same skillet, fry the eggs until done. 4. Assemble by dividing quinoa, turkey, and avocado equally. Top with salsa, a fried egg, green onions, and cilantro. Serve with lime.',
+                tags: ['High Protein', 'Gluten Free', 'Quick', 'Dairy Free', 'Meal Prep/Freezer Friendly'],
+                image: 'https://placehold.co/300x200/FF5722/FFFFFF?text=Tex-Mex+Bowl',
+                nutrition: { Prep: '10 mins', Cook: '15 mins', Kcal: 480, Fats: 20, Carbs: 35, Protein: 45, Fibre: 8 },
+                storage: 'Store components separately; best assembled fresh. Turkey/quinoa can be prepped 3 days ahead.'
+            },
+            {
+                id: 'r26', name: 'Berry Blast Smoothie', category: 'Snack',
+                ingredients: [
+                    { name: 'Almond Milk, unsweetened', quantity: '5 fl oz. (150ml)' },
+                    { name: 'Blueberries', quantity: '3.5 oz. (100g)' },
+                    { name: 'Vanilla Protein Powder', quantity: '1 oz. (30g)' },
+                    { name: 'Banana', quantity: '1/2' },
+                    { name: 'Tahini', quantity: '1 tsp.' },
+                    { name: 'Ground Cinnamon', quantity: '1 tsp.' },
+                    { name: 'Vanilla Extract', quantity: '1/2 tsp.' }
+                ],
+                instructions: '1. Combine all ingredients in a blender. 2. Blend until smooth and creamy. 3. Pour into a glass and serve immediately.',
+                tags: ['Gluten Free', 'Dairy Free', 'High Protein', 'Vegetarian', 'Quick', 'Contains Nuts'],
+                image: 'https://placehold.co/300x200/5C2E91/FFFFFF?text=Berry+Smoothie',
+                nutrition: { Prep: '5 mins', Cook: '0 mins', Kcal: 250, Fats: 8, Carbs: 30, Protein: 20, Fibre: 6 },
+                storage: 'Must be consumed immediately.'
+            },
+            <!-- NEW RECIPE: Beetroot Chocolate Brownies -->
+            {
+                id: 'r27', name: 'Beetroot Chocolate Brownies', category: 'Snack',
+                ingredients: [
+                    { name: 'Chocolate, dark', quantity: '150g' },
+                    { name: 'Butter, unsalted', quantity: '100g' },
+                    { name: 'Sugar, brown', quantity: '1 cup' },
+                    { name: 'Beetroot, pureed', quantity: '1/2 cup' },
+                    { name: 'Flour', quantity: '1 cup' },
+                    { name: 'Baking Soda', quantity: '1 tsp' },
+                    { name: 'Baking Powder', quantity: '1 tsp' },
+                    { name: 'Cocoa Powder', quantity: '1/2 cup' },
+                    { name: 'Applesauce, unsweetened', quantity: '1/2 cup' }
+                ],
+                instructions: '1. Preheat oven to 190°C. Line a 7x9-inch pan. 2. Finely chop chocolate and melt with butter. Stir in sugar. 3. Puree the beetroot in a food processor. 4. In a large bowl, mix flour, baking soda, baking powder, and cocoa powder. 5. Add applesauce, pureed beetroot, and melted chocolate mixture to dry ingredients. Stir until just combined. 6. Pour batter into the prepared pan and bake for 40 minutes. 7. Allow to cool completely before slicing and serving.',
+                tags: ['Vegetarian', 'Meal Prep/Freezer Friendly'],
+                image: 'https://placehold.co/300x200/A52A2A/FFFFFF?text=Beetroot+Brownies',
+                nutrition: { Prep: '20 mins', Cook: '40 mins', Kcal: 231, Fats: 11, Carbs: 31, Protein: 2, Fibre: 4 },
+                storage: 'Store in an airtight container at room temperature for up to 5 days, or freeze for up to 3 months.'
+            },
+        ];
+
+        const MEAL_TYPES = ['Breakfast', 'Lunch', 'Dinner', 'Snack'];
+        const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+        const TOTAL_SLOTS = DAYS.length * MEAL_TYPES.length;
+        
+        let mealPlan = DAYS.reduce((acc, day) => {
+            acc[day] = MEAL_TYPES.reduce((mealAcc, meal) => {
+                mealAcc[meal] = null; // Stores the recipe ID
+                return mealAcc;
+            }, {});
+            return acc;
+        }, {});
+
+        let currentSelection = { day: null, meal: null };
+        let selectedTags = new Set(); // State for active tag filters
+
+        // --- Utility Functions ---
+
+        /**
+         * Assigns an ingredient to a category based on the FINAL_CATEGORIES map.
+         * @param {string} ingredientName - The full name of the ingredient.
+         * @returns {string} The assigned category or 'Misc'.
+         */
+        function categorizeIngredient(ingredientName) {
+            const lowerName = ingredientName.toLowerCase();
+            
+            for (const category in FINAL_CATEGORIES) {
+                const keywords = FINAL_CATEGORIES[category];
+                // Check if the ingredient name contains any of the category keywords
+                if (keywords.some(keyword => lowerName.includes(keyword))) {
+                    return category;
+                }
+            }
+            return 'Misc';
+        }
+
+        /**
+         * Finds a recipe object by its ID.
+         * @param {string} id - The recipe ID.
+         * @returns {object|null} The recipe object or null.
+         */
+        function getRecipeById(id) {
+            return RECIPES.find(r => r.id === id) || null;
+        }
+
+        /**
+         * Updates the status counter displayed at the top of the app.
+         */
+        function updatePlanStatus() {
+            let filledCount = 0;
+            const uniqueRecipeIds = new Set();
+
+            for (const day of DAYS) {
+                for (const meal of MEAL_TYPES) {
+                    const recipeId = mealPlan[day][meal];
+                    if (recipeId) {
+                        filledCount++;
+                        uniqueRecipeIds.add(recipeId);
+                    }
+                }
+            }
+
+            document.getElementById('filledSlots').textContent = `Meals Planned: ${filledCount} / ${TOTAL_SLOTS}`;
+            document.getElementById('uniqueRecipes').textContent = `Unique Recipes Used: ${uniqueRecipeIds.size}`;
+        }
+
+        /**
+         * Renders the main meal plan grid.
+         */
+        function renderMealPlan() {
+            const body = document.getElementById('mealPlanBody');
+            body.innerHTML = ''; // Clear existing content
+
+            DAYS.forEach(day => {
+                const row = document.createElement('tr');
+                // Use dark theme hover class
+                row.className = 'hover:bg-slate-700 transition duration-100';
+
+                // Day column
+                // Updated text color for prominence in dark theme
+                let html = `<td class="px-2 py-2 whitespace-nowrap font-bold text-teal-400">${day}</td>`;
+
+                MEAL_TYPES.forEach(meal => {
+                    const recipeId = mealPlan[day][meal];
+                    const recipe = getRecipeById(recipeId);
+                    
+                    html += `
+                        <td 
+                            data-day="${day}" 
+                            data-meal="${meal}"
+                            class="meal-slot ${recipe ? 'filled' : ''} cursor-pointer p-2 border-l border-slate-700 text-sm text-slate-200 rounded-lg hover:shadow-lg transition duration-150"
+                            onclick="openModal('${day}', '${meal}')"
+                        >
+                            <span class="font-medium">${recipe ? recipe.name : 'Click to Add'}</span>
+                            ${recipe ? '<button onclick="event.stopPropagation(); removeRecipe(\''+day+'\', \''+meal+'\')" class="ml-1 text-red-400 hover:text-red-300 font-bold text-xs">x</button>' : ''}
+                        </td>
+                    `;
+                });
+                
+                row.innerHTML = html;
+                body.appendChild(row);
+            });
+            updatePlanStatus(); // Update status whenever the grid changes
+        }
+
+        /**
+         * Displays a notification message.
+         * @param {string} message - The message to display.
+         * @param {string} type - The type of message ('success' or 'error').
+         */
+        function showNotification(message, type) {
+            const notificationArea = document.getElementById('notificationArea');
+            // Use dark theme appropriate colors for notification
+            const bgClass = type === 'error' ? 'bg-red-900 text-red-200 border-red-400' : 'bg-green-900 text-green-200 border-green-400';
+            
+            notificationArea.innerHTML = `<div class="p-6 ${bgClass} rounded-xl shadow-2xl border">${message}</div>`;
+            notificationArea.classList.remove('hidden');
+            notificationArea.classList.add('flex');
+
+            setTimeout(() => {
+                notificationArea.classList.add('hidden');
+                notificationArea.classList.remove('flex');
+                notificationArea.innerHTML = '';
+            }, 3000);
+        }
+
+        /**
+         * Opens the recipe selection modal.
+         */
+        function openModal(day, meal) {
+            currentSelection = { day, meal };
+            document.getElementById('modalTitleSlot').textContent = `${meal} on ${day}`;
+            
+            // Set the category filter to match the meal type by default
+            const categoryFilter = document.getElementById('categoryFilter');
+            categoryFilter.value = meal; 
+            
+            // Reset and apply filters
+            selectedTags.clear();
+            renderTagButtons(); // Re-render tag buttons to clear active state
+            filterRecipes();
+
+            document.getElementById('recipeModal').classList.remove('hidden');
+            document.getElementById('recipeModal').classList.add('flex');
+        }
+
+        /**
+         * Closes the recipe selection modal.
+         */
+        function closeModal() {
+            document.getElementById('recipeModal').classList.add('hidden');
+            document.getElementById('recipeModal').classList.remove('flex');
+            
+            // Clear filters when closing
+            document.getElementById('categoryFilter').value = '';
+            selectedTags.clear();
+            renderTagButtons();
+        }
+
+        /**
+         * Adds a selected recipe to the meal plan and closes the modal.
+         */
+        function selectRecipe(recipeId) {
+            mealPlan[currentSelection.day][currentSelection.meal] = recipeId;
+            renderMealPlan();
+            closeModal();
+        }
+
+        /**
+         * Removes a recipe from the meal plan.
+         */
+        function removeRecipe(day, meal) {
+            mealPlan[day][meal] = null;
+            renderMealPlan();
+        }
+
+        /**
+         * Toggles the active state of a tag filter, updates the button, and re-filters the recipes.
+         * @param {string} tag - The tag to toggle.
+         */
+        function toggleTagFilter(tag) {
+            const button = document.querySelector(`[data-tag="${tag}"]`);
+            if (selectedTags.has(tag)) {
+                selectedTags.delete(tag);
+                button.classList.remove('active');
+            } else {
+                selectedTags.add(tag);
+                button.classList.add('active');
+            }
+            filterRecipes();
+        }
+
+        /**
+         * Filters the recipe list based on selected category and active tags.
+         */
+        function filterRecipes() {
+            const listContainer = document.getElementById('recipeList');
+            const category = document.getElementById('categoryFilter').value;
+            const activeTags = Array.from(selectedTags);
+
+            const filtered = RECIPES.filter(recipe => {
+                const categoryMatch = !category || recipe.category === category;
+                
+                // Tag match: recipe must contain ALL selected active tags (AND logic)
+                const tagMatch = activeTags.every(tag => recipe.tags.includes(tag));
+
+                return categoryMatch && tagMatch;
+            });
+
+            listContainer.innerHTML = filtered.map(recipe => `
+                <div 
+                    class="p-4 bg-slate-900 border border-slate-700 rounded-xl cursor-pointer hover:bg-teal-900 transition duration-150 shadow-md"
+                    onclick="selectRecipe('${recipe.id}')"
+                >
+                    <div class="flex items-start gap-4">
+                        <!-- Thumbnail Image -->
+                        <img 
+                            src="${recipe.image}" 
+                            alt="${recipe.name}" 
+                            class="w-20 h-20 object-cover rounded-lg flex-shrink-0"
+                            onerror="this.onerror=null; this.src='https://placehold.co/80x80/cccccc/000000?text=Food';"
+                        />
+                        
+                        <!-- Recipe Details -->
+                        <div class="flex-grow">
+                            <h3 class="font-bold text-lg text-teal-400 mb-1">${recipe.name}</h3>
+                            <div class="text-xs text-slate-400 mb-2 italic flex flex-wrap gap-1">
+                                Category: ${recipe.category} |
+                                <!-- Limit visible tags to 3 for compactness -->
+                                ${recipe.tags.slice(0, 3).map(tag => `<span class="px-2 py-0.5 bg-slate-700 text-slate-300 rounded-full font-medium text-xs">${tag}</span>`).join('')}
+                            </div>
+
+                            <!-- Quick Nutrition Preview -->
+                            <div class="flex flex-wrap gap-2 text-center text-sm font-semibold mt-2">
+                                <div class="bg-indigo-700 text-indigo-200 px-2 py-1 rounded-full">
+                                    Kcal: ${recipe.nutrition.Kcal}
+                                </div>
+                                <div class="bg-teal-700 text-teal-200 px-2 py-1 rounded-full">
+                                    Protein: ${recipe.nutrition.Protein}g
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+
+            if (filtered.length === 0) {
+                listContainer.innerHTML = '<p class="text-center text-slate-400 p-4">No recipes match your filter criteria.</p>';
+            }
+        }
+
+        /**
+         * Renders the tag buttons based on the fixed CURATED_TAGS list.
+         */
+        function renderTagButtons() {
+            const tagContainer = document.getElementById('tagButtonContainer');
+            tagContainer.innerHTML = '';
+            
+            // Use the fixed CURATED_TAGS list
+            CURATED_TAGS.forEach(tag => {
+                const button = document.createElement('button');
+                button.textContent = tag;
+                button.setAttribute('data-tag', tag);
+                button.onclick = () => toggleTagFilter(tag);
+                
+                let iconClass = 'bg-slate-600 text-slate-200 hover:bg-slate-500';
+                
+                // Add specific color for important tags (dark theme contrast adjusted)
+                if (tag === 'High Protein') {
+                    iconClass = 'bg-blue-800 text-blue-200 hover:bg-blue-700';
+                } else if (tag === 'Low Carb') {
+                    iconClass = 'bg-indigo-800 text-indigo-200 hover:bg-indigo-700';
+                } else if (tag === 'Vegetarian') {
+                    iconClass = 'bg-green-800 text-green-200 hover:bg-green-700';
+                } else if (tag === 'Quick') {
+                    iconClass = 'bg-yellow-800 text-yellow-200 hover:bg-yellow-700';
+                } else if (tag === 'Gluten Free') {
+                    iconClass = 'bg-pink-800 text-pink-200 hover:bg-pink-700';
+                } else if (tag === 'Dairy Free') {
+                    iconClass = 'bg-red-800 text-red-200 hover:bg-red-700';
+                } else if (tag === 'Meal Prep/Freezer Friendly') {
+                    iconClass = 'bg-purple-800 text-purple-200 hover:bg-purple-700';
+                } else if (tag === 'Contains Nuts') {
+                    iconClass = 'bg-amber-800 text-amber-200 hover:bg-amber-700';
+                }
+                
+                button.className = `tag-button px-3 py-1 rounded-full text-xs font-semibold ${iconClass} transition duration-150 whitespace-nowrap`;
+                
+                if (selectedTags.has(tag)) {
+                    button.classList.add('active');
+                }
+
+                tagContainer.appendChild(button);
+            });
+        }
+
+
+        /**
+         * Aggregates and categorizes ingredients into a shopping list structure.
+         * @returns {object} Categorized shopping list object.
+         */
+        function generateShoppingList() {
+            const selectedRecipeIds = new Set();
+            for (const day of DAYS) {
+                for (const meal of MEAL_TYPES) {
+                    if (mealPlan[day][meal]) {
+                        selectedRecipeIds.add(mealPlan[day][meal]);
+                    }
+                }
+            }
+
+            // Temporary flat list to aggregate quantities
+            const flatShoppingList = {};
+
+            selectedRecipeIds.forEach(id => {
+                const recipe = getRecipeById(id);
+                if (recipe && recipe.ingredients) {
+                    recipe.ingredients.forEach(item => {
+                        const name = item.name.trim();
+                        if (flatShoppingList[name]) {
+                            flatShoppingList[name].quantities.push(item.quantity);
+                        } else {
+                            flatShoppingList[name] = {
+                                quantities: [item.quantity],
+                                category: categorizeIngredient(name)
+                            };
+                        }
+                    });
+                }
+            });
+            
+            // Final categorized list structure, initialized with defined categories
+            const categorizedShoppingList = {};
+            SHOPPING_CATEGORIES_ORDER.forEach(cat => categorizedShoppingList[cat] = []);
+
+            // Populate the categorized list
+            for (const name in flatShoppingList) {
+                const item = flatShoppingList[name];
+                
+                let category = item.category;
+                
+                // If a category exists in the FINAL_CATEGORIES map, push the item there.
+                if (categorizedShoppingList[category]) {
+                    categorizedShoppingList[category].push({ name: name, quantities: item.quantities });
+                } else {
+                    // This handles the 'Misc' fallback implicitly if categorization fails
+                    categorizedShoppingList['Misc'].push({ name: name, quantities: item.quantities });
+                }
+            }
+
+            // Sort items within each category alphabetically
+            for (const category in categorizedShoppingList) {
+                categorizedShoppingList[category].sort((a, b) => a.name.localeCompare(b.name));
+            }
+
+            return categorizedShoppingList;
+        }
+
+        /**
+         * Closes the printable text output modal.
+         */
+        function closePrintOutputModal() {
+            document.getElementById('printOutputModal').classList.add('hidden');
+            document.getElementById('printOutputModal').classList.remove('flex');
+            document.getElementById('outputContentDiv').innerHTML = ''; // Clear content
+        }
+
+        /**
+         * Helper to split instructions string into a list of steps.
+         * @param {string} instructionsString - The combined string of instructions.
+         * @returns {string[]} An array of steps.
+         */
+        function parseInstructions(instructionsString) {
+            // Splits by pattern: "1. ", "2. ", etc., and filters out empty strings.
+            const steps = instructionsString.split(/\d+\.\s/).filter(s => s.trim() !== '');
+            return steps;
+        }
+
+        /**
+         * Generates the final document as clean, styled HTML optimized for PDF printing.
+         * @returns {string} The styled HTML content.
+         */
+        function generateStyledHTMLForPrint() {
+            const selectedRecipeIds = new Set();
+            const shoppingList = generateShoppingList();
+            
+            for (const day of DAYS) {
+                for (const meal of MEAL_TYPES) {
+                    if (mealPlan[day][meal]) {
+                        selectedRecipeIds.add(mealPlan[day][meal]);
+                    }
+                }
+            }
+
+            // --- Generate Shopping List HTML by Category ---
+            let shoppingListHTML = '';
+            SHOPPING_CATEGORIES_ORDER.forEach(category => {
+                const items = shoppingList[category] || []; // Get the items for the current category
+                
+                if (items.length > 0) {
+                    shoppingListHTML += `
+                        <div class="mb-6">
+                            <h3 class="text-xl font-bold text-teal-700 mb-2 border-b border-gray-100">${category}</h3>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2">
+                                ${items.map(item => `
+                                    <div class="flex items-start space-x-3 text-gray-700">
+                                        <span class="text-teal-500 text-xl font-bold">✓</span>
+                                        <p class="text-base">
+                                            <span class="font-semibold">${item.name}:</span> 
+                                            <span class="text-sm italic">${item.quantities.join(' + ')}</span>
+                                        </p>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    `;
+                }
+            });
+
+            
+            // --- Compile Full Document HTML ---
+            let htmlContent = `
+                <div class="space-y-12 print:text-black font-['Inter']">
+                    <!-- Title Section -->
+                    <div class="text-center pb-4 border-b-4 border-teal-500">
+                        <h1 class="font-['Playfair_Display'] text-5xl font-extrabold text-teal-700">The 7-Day Meal Plan</h1>
+                        <p class="text-lg text-gray-600 mt-2">Prepared on ${new Date().toLocaleDateString()} • Your guide to healthy eating.</p>
+                    </div>
+
+                    <!-- Weekly Schedule -->
+                    <div>
+                        <h2 class="font-['Playfair_Display'] text-3xl font-bold text-gray-800 border-b-2 border-gray-200 pb-2 mb-4">1. Weekly Schedule</h2>
+                        <table class="w-full border-collapse">
+                            <thead>
+                                <tr class="bg-teal-100 border-b border-t">
+                                    <th class="py-2 text-left px-3 text-sm font-bold text-teal-800 w-1/12">DAY</th>
+                                    ${MEAL_TYPES.map(m => `<th class="py-2 text-left px-3 text-sm font-bold text-teal-800">${m.toUpperCase()}</th>`).join('')}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${DAYS.map(day => {
+                                    // Only render rows for days with content, for cleaner print output
+                                    const hasContent = MEAL_TYPES.some(meal => mealPlan[day][meal]);
+                                    if (!hasContent) return ''; 
+                                    return `
+                                        <tr class="border-b hover:bg-gray-50">
+                                            <td class="py-2 px-3 font-bold text-gray-800">${day}</td>
+                                            ${MEAL_TYPES.map(meal => {
+                                                const recipe = getRecipeById(mealPlan[day][meal]);
+                                                return `<td class="py-2 px-3 text-sm text-gray-700">${recipe ? recipe.name : '—'}</td>`;
+                                            }).join('')}
+                                        </tr>
+                                    `;
+                                }).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Shopping List (NOW CATEGORIZED) -->
+                    <div style="break-before: page;">
+                        <h2 class="font-['Playfair_Display'] text-3xl font-bold text-gray-800 border-b-2 border-gray-200 pb-2 mb-4">2. Consolidated Shopping List</h2>
+                        <div class="space-y-4">
+                            ${shoppingListHTML}
+                        </div>
+                    </div>
+
+                    <!-- Recipe Details -->
+                    <div style="break-before: page;">
+                        <h2 class="font-['Playfair_Display'] text-3xl font-bold text-gray-800 border-b-2 border-gray-200 pb-2 mb-6">3. Recipe Details</h2>
+                        <div class="space-y-12">
+                            ${Array.from(selectedRecipeIds).map((id, index) => {
+                                const recipe = getRecipeById(id);
+                                if (!recipe) return '';
+
+                                // Parse instructions into steps for list formatting
+                                const steps = parseInstructions(recipe.instructions);
+
+                                return `
+                                    <div class="p-6 border-2 border-gray-100 rounded-xl bg-white recipe-card-print">
+                                        <h3 class="font-['Playfair_Display'] text-3xl font-extrabold text-blue-700 mb-2">${recipe.name}</h3>
+                                        <p class="text-sm text-gray-500 mb-4 italic font-semibold">Category: ${recipe.category} | Tags: ${recipe.tags.join(', ')}</p>
+                                        
+                                        <!-- Prep/Cook/Nutrition Grid -->
+                                        <div class="grid grid-cols-2 sm:grid-cols-5 gap-2 text-center p-3 mb-4 bg-teal-50 rounded-lg">
+                                            <div class="font-bold text-teal-800 text-xs uppercase">Prep: <span class="block text-sm font-semibold text-gray-800">${recipe.nutrition.Prep}</span></div>
+                                            <div class="font-bold text-teal-800 text-xs uppercase">Cook: <span class="block text-sm font-semibold text-gray-800">${recipe.nutrition.Cook}</span></div>
+                                            <div class="font-bold text-teal-800 text-xs uppercase">Kcal: <span class="block text-sm font-semibold text-gray-800">${recipe.nutrition.Kcal}</span></div>
+                                            <div class="font-bold text-teal-800 text-xs uppercase">Protein: <span class="block text-sm font-semibold text-gray-800">${recipe.nutrition.Protein}g</span></div>
+                                            <div class="font-bold text-teal-800 text-xs uppercase">Fibre: <span class="block text-sm font-semibold text-gray-800">${recipe.nutrition.Fibre}g</span></div>
+                                        </div>
+
+                                        <div class="flex flex-col sm:flex-row gap-6">
+                                            <!-- Left Column: Image and Ingredients -->
+                                            <div class="sm:w-1/3 space-y-4">
+                                                <img src="${recipe.image}" alt="Image of ${recipe.name}" class="w-full h-auto rounded-lg shadow-lg recipe-image" onerror="this.onerror=null; this.src='https://placehold.co/300x200/cccccc/000000?text=Recipe+Image';" />
+
+                                                <h4 class="text-xl font-bold text-teal-600 mb-2 border-b border-teal-300">INGREDIENTS</h4>
+                                                <ul class="list-disc list-inside space-y-1 text-gray-700">
+                                                    ${recipe.ingredients.map(ing => `<li class="text-sm"><span class="font-semibold">${ing.quantity}</span> ${ing.name}</li>`).join('')}
+                                                </ul>
+                                            </div>
+                                            
+                                            <!-- Right Column: Instructions and Storage -->
+                                            <div class="sm:w-2/3">
+                                                <h4 class="text-xl font-bold text-teal-600 mb-2 border-b border-teal-300">INSTRUCTIONS</h4>
+                                                <ol class="space-y-3 text-gray-700 instruction-list">
+                                                    ${steps.map(step => `<li>${step.trim()}</li>`).join('')}
+                                                </ol>
+
+                                                <div class="mt-6 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                                                    <h4 class="text-sm font-bold text-gray-800 uppercase mb-1">Storage:</h4>
+                                                    <p class="text-sm text-gray-600 italic">${recipe.storage}</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            return htmlContent;
+        }
+        
+        /**
+         * Triggers the window.print() function after a brief delay.
+         * This improves reliability on some mobile browsers.
+         */
+        function triggerPrintWithDelay() {
+            // Add a small delay (100ms) to ensure the DOM is completely rendered before printing
+            setTimeout(() => {
+                window.print();
+            }, 100); 
+        }
+
+        /**
+         * Main function to generate the styled HTML document and show the modal.
+         */
+        function generatePrintableDocument() {
+            const selectedCount = Object.values(mealPlan).flatMap(day => Object.values(day)).filter(id => id).length;
+
+            if (selectedCount === 0) {
+                showNotification('Please fill at least one meal slot before generating the document.', 'error');
+                return;
+            }
+
+            const styledHtml = generateStyledHTMLForPrint();
+            
+            // 1. Display it in the modal
+            document.getElementById('outputContentDiv').innerHTML = styledHtml;
+            
+            // 2. Show the modal
+            document.getElementById('printOutputModal').classList.remove('hidden');
+            document.getElementById('printOutputModal').classList.add('flex');
+        }
+
+        /**
+         * Fills the plan with a simple, rotating selection of recipes, applying a primary diet filter if selected.
+         */
+        function autoFillPlan() {
+            const dietFilterValue = document.getElementById('dietFilter').value;
+            const dietTag = MAJOR_DIETS[dietFilterValue]; // Get the actual tag string ('Low Carb', 'Vegetarian', etc.)
+
+            // Start with the full recipe list
+            let filteredRecipes = RECIPES;
+
+            // Apply the major diet filter if one is selected
+            if (dietTag && dietFilterValue !== '') {
+                filteredRecipes = RECIPES.filter(r => r.tags.includes(dietTag));
+                
+                // If the filter removes all recipes, notify the user and stop
+                if (filteredRecipes.length === 0) {
+                    showNotification(`No recipes available for the selected diet: **${dietFilterValue}**. Please choose a different filter.`, 'error');
+                    return;
+                }
+            }
+
+            let bIndex = 0;
+            let lIndex = 0;
+            let dIndex = 0;
+            let sIndex = 0;
+
+            const bRecipes = filteredRecipes.filter(r => r.category === 'Breakfast');
+            const lRecipes = filteredRecipes.filter(r => r.category === 'Lunch');
+            const dRecipes = filteredRecipes.filter(r => r.category === 'Dinner');
+            const sRecipes = filteredRecipes.filter(r => r.category === 'Snack'); 
+
+            DAYS.forEach(day => {
+                if (bRecipes.length > 0) {
+                    mealPlan[day]['Breakfast'] = bRecipes[bIndex % bRecipes.length].id;
+                    bIndex++;
+                } else {
+                    mealPlan[day]['Breakfast'] = null;
+                }
+
+                if (lRecipes.length > 0) {
+                    mealPlan[day]['Lunch'] = lRecipes[lIndex % lRecipes.length].id;
+                    lIndex++;
+                } else {
+                    mealPlan[day]['Lunch'] = null;
+                }
+
+                if (dRecipes.length > 0) {
+                    mealPlan[day]['Dinner'] = dRecipes[dIndex % dRecipes.length].id;
+                    dIndex++;
+                } else {
+                    mealPlan[day]['Dinner'] = null;
+                }
+
+                if (sRecipes.length > 0) {
+                    mealPlan[day]['Snack'] = sRecipes[sIndex % sRecipes.length].id;
+                    sIndex++;
+                } else {
+                    mealPlan[day]['Snack'] = null;
+                }
+            });
+
+            renderMealPlan();
+            const message = dietFilterValue === '' ? 'Plan auto-filled with sample recipes!' : `Plan auto-filled using **${dietFilterValue}** filter!`;
+            showNotification(message, 'success');
+        }
+
+        /**
+         * Clears all selections in the meal plan.
+         */
+        function clearPlan() {
+            mealPlan = DAYS.reduce((acc, day) => {
+                acc[day] = MEAL_TYPES.reduce((mealAcc, meal) => {
+                    mealAcc[meal] = null;
+                    return mealAcc;
+                }, {});
+                return acc;
+            }, {});
+            renderMealPlan();
+            showNotification('Meal plan cleared!', 'success');
+        }
+
+        /**
+         * Initializes the modal category filter options and the new primary diet filter.
+         */
+        function initializeFilters() {
+            // 1. Initialize Category Filter (for the modal)
+            const categoryFilter = document.getElementById('categoryFilter');
+            categoryFilter.innerHTML = '<option value="">All Categories</option>';
+            
+            const uniqueCategories = [...new Set(RECIPES.map(r => r.category))].sort();
+
+            uniqueCategories.forEach(category => {
+                const option = document.createElement('option');
+                option.value = category;
+                option.textContent = category;
+                categoryFilter.appendChild(option);
+            });
+
+            // 2. Initialize Major Diet Filter (for the Autofill)
+            const dietFilter = document.getElementById('dietFilter');
+            dietFilter.innerHTML = ''; // Clear previous options
+            
+            Object.keys(MAJOR_DIETS).forEach(key => {
+                const option = document.createElement('option');
+                option.value = key;
+                option.textContent = MAJOR_DIETS[key];
+                dietFilter.appendChild(option);
+            });
+
+
+            // 3. Initialize Tag Buttons (for the modal)
+            renderTagButtons();
+        }
+
+        // --- Event Listeners and Initialization ---
+        document.addEventListener('DOMContentLoaded', () => {
+            renderMealPlan();
+            initializeFilters();
+
+            document.getElementById('autoFillBtn').addEventListener('click', autoFillPlan);
+            document.getElementById('clearPlanBtn').addEventListener('click', clearPlan);
+            document.getElementById('generatePrintBtn').addEventListener('click', generatePrintableDocument);
+        });
+
+    </script>
+</body>
+</html>

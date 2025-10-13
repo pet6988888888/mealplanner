@@ -54,10 +54,10 @@
                 left: 0 !important;
                 margin: 0 !important;
                 width: 100% !important;
-                height: 100% !important;
+                height: auto !important;
                 overflow: visible !important;
                 background-color: white !important;
-                display: block !important; /* Ensure it is visible */
+                display: block !important;
             }
             
             /* Remove the modal dialog styling */
@@ -71,6 +71,7 @@
                 overflow: visible !important;
                 padding: 0 !important;
                 transform: none !important;
+                background: white !important;
             }
 
             /* Hide the modal's controls (now at the top) */
@@ -78,9 +79,20 @@
                 display: none !important;
             }
 
-            /* Adjust content padding for printing */
+            /* CRITICAL: Remove height restrictions and overflow on content container */
+            #printOutputDialog > div {
+                max-height: none !important;
+                overflow: visible !important;
+                padding: 0 !important;
+            }
+
+            /* Adjust content padding for printing and remove all height/overflow restrictions */
             #outputContentDiv {
-                padding: 0.5in; /* Adjusted for mobile view/print */
+                padding: 0.5in !important;
+                max-height: none !important;
+                overflow: visible !important;
+                height: auto !important;
+                border: none !important;
             }
 
             /* Force black text for print clarity */
@@ -104,6 +116,7 @@
             }
         }
         /* --- END PRINT STYLES --- */
+
 
         /* Styling for the content div (when displayed in modal) - MUST be light for contrast/printing */
         #outputContentDiv {
@@ -138,7 +151,7 @@
     <div id="app" class="max-w-4xl mx-auto">
         <header class="mb-8 p-4 bg-slate-800 rounded-xl shadow-2xl border-t-4 border-teal-500">
             <h1 class="text-3xl font-extrabold text-teal-400 mb-2">Weekly Meal Planner</h1>
-            <p class="text-slate-400">Plan your meals for 7 days, select recipes from **27 available options**, and generate a **styled document** for a beautiful PDF export using your browser's Print function.</p>
+            <p class="text-slate-400">Plan your meals for 7 days, select recipes from available options, and generate a complete meal plan with shopping list and recipes.</p>
             
             <!-- NEW: Plan Status Tracker -->
             <div id="planStatus" class="mt-3 flex flex-wrap gap-4 text-sm font-semibold text-slate-300">
@@ -250,11 +263,12 @@
                 <!-- Removed the top padding here since the header has it -->
             </div> 
 
-            <div class="p-6 pt-0 max-h-[70vh] overflow-y-auto">
-                <div id="outputContentDiv" class="w-full p-6 rounded-lg text-sm border-2 border-slate-700">
+            <div class="p-6 pt-0 max-h-[70vh] overflow-y-auto print:!max-h-none print:!overflow-visible print:!p-0">
+                <div id="outputContentDiv" class="w-full p-6 rounded-lg text-sm border-2 border-slate-700 print:!border-0 print:!rounded-none">
                     <!-- Styled content will be generated here -->
                 </div>
             </div>
+
             
             <!-- Modal Footer (REMOVED - functionality moved to printOutputHeaderControls) -->
         </div>

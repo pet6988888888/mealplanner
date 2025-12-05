@@ -50,7 +50,7 @@
         }
 
         @media print {
-            #app, #recipeModal, #notificationArea {
+            #app, #recipeModal, #notificationArea, #customerInfoModal {
                 display: none !important;
             }
             #printOutputModal {
@@ -242,6 +242,13 @@
                     Generate Meal Plan
                 </button>
             </div>
+
+            <!-- New Button to open customer info modal -->
+            <div class="mt-4">
+                <button id="openCustomerInfoBtn" class="w-full bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-3 px-6 rounded-xl shadow-lg transition duration-150 transform hover:scale-[1.01] focus:outline-none focus:ring-4 focus:ring-yellow-500/50">
+                    Enter Customer Info & Notes
+                </button>
+            </div>
         </div>
 
         <div id="mealPlanGridContainer" class="bg-slate-800 p-2 sm:p-6 rounded-xl shadow-2xl overflow-x-auto">
@@ -293,6 +300,66 @@
                 <button onclick="closeModal()" class="bg-slate-600 hover:bg-slate-500 text-slate-200 font-bold py-2 px-4 rounded-lg transition duration-150">
                     Cancel
                 </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- New Customer Info Modal -->
+    <div id="customerInfoModal" class="fixed inset-0 bg-black bg-opacity-80 hidden items-center justify-center p-4 z-50 transition-opacity duration-300" onclick="if(event.target.id === 'customerInfoModal') closeCustomerInfoModal()">
+        <div class="bg-slate-800 w-full max-w-lg rounded-xl shadow-2xl overflow-hidden transform scale-100 transition-transform duration-300">
+            <div class="p-6 overflow-y-auto max-h-[80vh]">
+                <h2 class="text-2xl font-bold text-yellow-400 mb-4">Customer Info & Trainer Notes</h2>
+                <form id="customerInfoForm" onsubmit="event.preventDefault(); saveCustomerInfo();">
+                    <div class="mb-4">
+                        <label for="customerName" class="block text-yellow-300 font-semibold mb-1">Name:</label>
+                        <input type="text" id="customerName" class="w-full p-2 rounded bg-slate-700 border border-yellow-600 text-yellow-200" required />
+                    </div>
+                    <div class="mb-4 grid grid-cols-3 gap-4">
+                        <div>
+                            <label for="customerAge" class="block text-yellow-300 font-semibold mb-1">Age:</label>
+                            <input type="number" id="customerAge" min="0" class="w-full p-2 rounded bg-slate-700 border border-yellow-600 text-yellow-200" required />
+                        </div>
+                        <div>
+                            <label for="customerWeight" class="block text-yellow-300 font-semibold mb-1">Weight (kg):</label>
+                            <input type="number" id="customerWeight" min="0" step="0.1" class="w-full p-2 rounded bg-slate-700 border border-yellow-600 text-yellow-200" required />
+                        </div>
+                        <div>
+                            <label for="customerHeight" class="block text-yellow-300 font-semibold mb-1">Height (cm):</label>
+                            <input type="number" id="customerHeight" min="0" step="0.1" class="w-full p-2 rounded bg-slate-700 border border-yellow-600 text-yellow-200" required />
+                        </div>
+                    </div>
+                    <div class="mb-4">
+                        <label for="customerGender" class="block text-yellow-300 font-semibold mb-1">Gender:</label>
+                        <select id="customerGender" class="w-full p-2 rounded bg-slate-700 border border-yellow-600 text-yellow-200" required>
+                            <option value="">Select Gender</option>
+                            <option value="male">Male</option>
+                            <option value="female">Female</option>
+                            <option value="other">Other</option>
+                        </select>
+                    </div>
+                    <div class="mb-4">
+                        <label for="customerGoal" class="block text-yellow-300 font-semibold mb-1">Goal:</label>
+                        <select id="customerGoal" class="w-full p-2 rounded bg-slate-700 border border-yellow-600 text-yellow-200" required>
+                            <option value="">Select Goal</option>
+                            <option value="lose">Lose Weight</option>
+                            <option value="maintain">Maintain Weight</option>
+                            <option value="gain">Gain Weight</option>
+                        </select>
+                    </div>
+                    <div class="mb-4">
+                        <label for="trainerNotes" class="block text-yellow-300 font-semibold mb-1">Trainer Notes:</label>
+                        <textarea id="trainerNotes" rows="5" class="w-full p-2 rounded bg-slate-700 border border-yellow-600 text-yellow-200" placeholder="Add any notes from the trainer..."></textarea>
+                    </div>
+                    <div class="flex justify-end gap-4">
+                        <button type="button" onclick="closeCustomerInfoModal()" class="bg-slate-600 hover:bg-slate-500 text-yellow-200 font-bold py-2 px-4 rounded-lg transition duration-150">
+                            Cancel
+                        </button>
+                        <button type="submit" class="bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-2 px-4 rounded-lg transition duration-150">
+                            Save Info
+                        </button>
+                    </div>
+                </form>
+                <div id="calorieInfo" class="mt-4 text-yellow-300 font-semibold"></div>
             </div>
         </div>
     </div>
@@ -400,11 +467,9 @@
         const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
         const TOTAL_SLOTS = DAYS.length * MEAL_TYPES.length;
 
-        // Mock recipes data (abbreviated for brevity, please use the full list you have)
+        // Full recipes array remains unchanged (omitted here for brevity, but fully included in the actual code)
         const RECIPES = [
-            // ... (Include all your recipe objects here as before)
-            // For demonstration, a few sample recipes:
-            { 
+                    { 
                 id: 'r1', name: 'Chocolate Baked Oats', category: 'Breakfast', 
                 ingredients: [{ name: 'Rolled Oats', quantity: '1 cup' }, { name: 'Cocoa Powder', quantity: '2 tbsp' }, { name: 'Milk', quantity: '1/2 cup' }, { name: 'Sweetener', quantity: 'to taste' }], 
                 instructions: '1. Preheat oven to 180°C. 2. Combine all ingredients in a bowl and mix well. 3. Pour into an oven-safe dish. 4. Bake for 20-25 minutes until set. Serve warm.', 
@@ -1104,7 +1169,6 @@
                 nutrition: { Prep: '5 mins', Cook: '0 mins', Kcal: 330, Fats: 3, Carbs: 79, Protein: 3, Fibre: 6 },
                 storage: 'Best consumed immediately.'
             },
-            // Add all other recipes here...
         ];
 
         let mealPlan = DAYS.reduce((acc, day) => {
@@ -1118,6 +1182,19 @@
         let currentSelection = { day: null, meal: null };
         let selectedTags = new Set();
         let coverImageDataUrl = null;
+
+        // New customer info state
+        let customerInfo = {
+            name: '',
+            age: null,
+            weight: null,
+            height: null,
+            gender: '',
+            goal: '',
+            trainerNotes: '',
+            tdee: null,
+            calorieTarget: null
+        };
 
         function categorizeIngredient(ingredientName) {
             const lowerName = ingredientName.toLowerCase();
@@ -1442,6 +1519,35 @@
             return steps;
         }
 
+        // Calculate TDEE based on Mifflin-St Jeor Equation and activity factor assumed sedentary (1.2)
+        function calculateTDEE(gender, weightKg, heightCm, age) {
+            let bmr;
+            if (gender === 'male') {
+                bmr = 10 * weightKg + 6.25 * heightCm - 5 * age + 5;
+            } else if (gender === 'female') {
+                bmr = 10 * weightKg + 6.25 * heightCm - 5 * age - 161;
+            } else {
+                // For other or unspecified, average of male and female
+                const bmrMale = 10 * weightKg + 6.25 * heightCm - 5 * age + 5;
+                const bmrFemale = 10 * weightKg + 6.25 * heightCm - 5 * age - 161;
+                bmr = (bmrMale + bmrFemale) / 2;
+            }
+            const activityFactor = 1.2; // Sedentary, can be enhanced to allow user input in future
+            return Math.round(bmr * activityFactor);
+        }
+
+        function calculateCalorieTarget(tdee, goal) {
+            switch(goal) {
+                case 'lose':
+                    return Math.round(tdee * 0.8);
+                case 'gain':
+                    return Math.round(tdee * 1.15);
+                case 'maintain':
+                default:
+                    return tdee;
+            }
+        }
+
         function generateStyledHTMLForPrint() {
             const selectedRecipeIds = new Set();
             const shoppingList = generateShoppingList();
@@ -1452,6 +1558,28 @@
                         selectedRecipeIds.add(mealPlan[day][meal]);
                     }
                 }
+            }
+
+            // Customer Info Section HTML
+            let customerInfoHTML = '';
+            if (customerInfo.name) {
+                customerInfoHTML = `
+                    <div style="margin-bottom: 2rem; page-break-after: always; font-family: 'Inter', sans-serif; color: black; padding: 2rem; border: 2px solid #0d9488; border-radius: 1rem; max-width: 800px; margin: 0 auto;">
+                        <br><h2 style="font-family: 'Inter', serif; font-size: 1.5rem; font-weight: 700; color: #0d9488; margin-bottom: 0.5rem;">Customer Information & Notes</h2><br>
+                        <div style="height: 3px; background-color: #0d9488; width: 100%; margin-bottom: 1rem;"></div>
+                        <p style="margin-bottom: 1rem;"><strong>Name:</strong> ${customerInfo.name}</p>
+                        <p style="margin-bottom: 1rem;"><strong>Age:</strong> ${customerInfo.age}</p>
+                        <p style="margin-bottom: 1rem;"><strong>Weight:</strong> ${customerInfo.weight} kg</p>
+                        <p style="margin-bottom: 1rem;"><strong>Height:</strong> ${customerInfo.height} cm</p>
+                        <p style="margin-bottom: 1rem;"><strong>Gender:</strong> ${customerInfo.gender.charAt(0).toUpperCase() + customerInfo.gender.slice(1)}</p>
+                        <p style="margin-bottom: 1rem;"><strong>Goal:</strong> ${customerInfo.goal.charAt(0).toUpperCase() + customerInfo.goal.slice(1)} Weight</p>
+                        <p style="margin-bottom: 1rem;"><strong>TDEE (Estimated):</strong> ${customerInfo.tdee} kcal/day</p>
+                        <p style="margin-bottom: 1rem;"><strong>Calorie Target:</strong> ${customerInfo.calorieTarget} kcal/day<br><br></p>
+                        <h2 style="font-family: 'Inter', serif; font-size: 1.5rem; font-weight: 600; color: #0d9488; margin-top: 1rem; margin-bottom: 0.5rem;">Trainer Notes:</h2><br>
+                        <div style="height: 3px; background-color: #0d9488; width: 100%; margin-bottom: 1rem;"></div>
+                        <p style="white-space: pre-wrap; font-style: italic;">${customerInfo.trainerNotes ? customerInfo.trainerNotes : '<em>No notes provided.</em>'}<br><br></p>
+                    </div>
+                `;
             }
 
             // Generate shopping list HTML with columns and subcategories as per image
@@ -1483,6 +1611,8 @@
                         <img src="${coverImageDataUrl}" alt="Meal Plan Cover" style="width: 100%; max-width: 800px; height: auto; margin: 0 auto;">
                     </div>
                     ` : ''}
+
+                    ${customerInfoHTML}
 
                     <div class="text-center pb-4 border-b-4 border-teal-500">
                         <h1 class="font-['Playfair_Display'] text-5xl font-extrabold text-teal-700">The 7-Day Meal Plan</h1>
@@ -1534,13 +1664,6 @@
                                     <div class="p-6 border-2 border-gray-100 rounded-xl bg-white recipe-card-print">
                                         <h3 class="font-['Playfair_Display'] text-3xl font-extrabold text-blue-700 mb-2">${recipe.name}</h3>
                                         <p class="text-sm text-gray-500 mb-4 italic font-semibold">Category: ${recipe.category} | Tags: ${recipe.tags.join(', ')}</p>
-                                        <div class="grid grid-cols-2 sm:grid-cols-5 gap-2 text-center p-3 mb-4 bg-teal-50 rounded-lg">
-                                            <div class="font-bold text-teal-800 text-xs uppercase">Prep: <span class="block text-sm font-semibold text-gray-800">${recipe.nutrition.Prep}</span></div>
-                                            <div class="font-bold text-teal-800 text-xs uppercase">Cook: <span class="block text-sm font-semibold text-gray-800">${recipe.nutrition.Cook}</span></div>
-                                            <div class="font-bold text-teal-800 text-xs uppercase">Kcal: <span class="block text-sm font-semibold text-gray-800">${recipe.nutrition.Kcal}</span></div>
-                                            <div class="font-bold text-teal-800 text-xs uppercase">Protein: <span class="block text-sm font-semibold text-gray-800">${recipe.nutrition.Protein}g</span></div>
-                                            <div class="font-bold text-teal-800 text-xs uppercase">Fibre: <span class="block text-sm font-semibold text-gray-800">${recipe.nutrition.Fibre}g</span></div>
-                                        </div>
 
                                         <div class="flex flex-col sm:flex-row gap-6">
                                             <div class="sm:w-1/3 space-y-4">
@@ -1560,6 +1683,16 @@
                                                     <p class="text-sm text-gray-600 italic">${recipe.storage}</p>
                                                 </div>
                                             </div>
+                                        </div>
+
+                                        <div class="grid grid-cols-3 sm:grid-cols-7 gap-2 text-center p-3 mt-4 bg-teal-50 rounded-lg">
+                                            <div class="font-bold text-teal-800 text-xs uppercase">Prep: <span class="block text-sm font-semibold text-gray-800">${recipe.nutrition.Prep}</span></div>
+                                            <div class="font-bold text-teal-800 text-xs uppercase">Cook: <span class="block text-sm font-semibold text-gray-800">${recipe.nutrition.Cook}</span></div>
+                                            <div class="font-bold text-teal-800 text-xs uppercase">Kcal: <span class="block text-sm font-semibold text-gray-800">${recipe.nutrition.Kcal}</span></div>
+                                            <div class="font-bold text-teal-800 text-xs uppercase">Fats: <span class="block text-sm font-semibold text-gray-800">${recipe.nutrition.Fats}g</span></div>
+                                            <div class="font-bold text-teal-800 text-xs uppercase">Carbs: <span class="block text-sm font-semibold text-gray-800">${recipe.nutrition.Carbs}g</span></div>
+                                            <div class="font-bold text-teal-800 text-xs uppercase">Protein: <span class="block text-sm font-semibold text-gray-800">${recipe.nutrition.Protein}g</span></div>
+                                            <div class="font-bold text-teal-800 text-xs uppercase">Fibre: <span class="block text-sm font-semibold text-gray-800">${recipe.nutrition.Fibre}g</span></div>
                                         </div>
                                     </div>
                                 `;
@@ -1719,6 +1852,54 @@
                     document.getElementById('coverPreview').src = '';
                 }
             });
+        }
+
+        // Customer Info Modal Control
+        document.getElementById('openCustomerInfoBtn').addEventListener('click', () => {
+            // Populate form with existing data if any
+            document.getElementById('customerName').value = customerInfo.name || '';
+            document.getElementById('customerAge').value = customerInfo.age || '';
+            document.getElementById('customerWeight').value = customerInfo.weight || '';
+            document.getElementById('customerHeight').value = customerInfo.height || '';
+            document.getElementById('customerGender').value = customerInfo.gender || '';
+            document.getElementById('customerGoal').value = customerInfo.goal || '';
+            document.getElementById('trainerNotes').value = customerInfo.trainerNotes || '';
+            document.getElementById('calorieInfo').textContent = '';
+            document.getElementById('customerInfoModal').classList.remove('hidden');
+            document.getElementById('customerInfoModal').classList.add('flex');
+        });
+
+        function closeCustomerInfoModal() {
+            document.getElementById('customerInfoModal').classList.add('hidden');
+            document.getElementById('customerInfoModal').classList.remove('flex');
+        }
+
+        function saveCustomerInfo() {
+            const name = document.getElementById('customerName').value.trim();
+            const age = parseInt(document.getElementById('customerAge').value);
+            const weight = parseFloat(document.getElementById('customerWeight').value);
+            const height = parseFloat(document.getElementById('customerHeight').value);
+            const gender = document.getElementById('customerGender').value;
+            const goal = document.getElementById('customerGoal').value;
+            const trainerNotes = document.getElementById('trainerNotes').value.trim();
+
+            if (!name || isNaN(age) || isNaN(weight) || isNaN(height) || !gender || !goal) {
+                showNotification('Please fill all required customer info fields.', 'error');
+                return;
+            }
+
+            const tdee = calculateTDEE(gender, weight, height, age);
+            const calorieTarget = calculateCalorieTarget(tdee, goal);
+
+            customerInfo = {
+                name, age, weight, height, gender, goal, trainerNotes, tdee, calorieTarget
+            };
+
+            document.getElementById('calorieInfo').textContent = `Estimated TDEE: ${tdee} kcal/day | Calorie Target: ${calorieTarget} kcal/day`;
+
+            showNotification('Customer info saved!', 'success');
+
+            closeCustomerInfoModal();
         }
 
         document.addEventListener('DOMContentLoaded', () => {
